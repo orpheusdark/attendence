@@ -1,0 +1,10 @@
+{
+  "expo": {
+    "name": "Secure Attendance",
+    "slug": "secure-attendance",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "assetBundlePatterns": ["**/*"],
+    "plugins": ["expo-secure-store"]
+  }
+}

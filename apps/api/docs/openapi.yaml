@@ -1,0 +1,142 @@
+openapi: 3.0.3
+info:
+  title: Secure Attendance System API
+  version: 1.0.0
+  description: Production API for live attendance, analytics, and fraud prevention.
+servers:
+  - url: /api/v1
+tags:
+  - name: Auth
+  - name: Attendance
+  - name: Analytics
+  - name: Admin
+  - name: Notifications
+paths:
+  /health:
+    get:
+      summary: Health check
+      responses:
+        '200':
+          description: Service is healthy
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Authenticate a user and issue tokens
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+      responses:
+        '200':
+          description: Authentication result
+  /auth/me:
+    get:
+      tags: [Auth]
+      summary: Return the current authenticated user
+      responses:
+        '200':
+          description: User profile
+  /attendance/sessions:
+    get:
+      tags: [Attendance]
+      summary: List attendance sessions
+      responses:
+        '200':
+          description: Session list
+    post:
+      tags: [Attendance]
+      summary: Start a new attendance session
+      responses:
+        '201':
+          description: Session started
+  /attendance/sessions/{sessionId}/scan:
+    post:
+      tags: [Attendance]
+      summary: Submit a scan for a session
+      parameters:
+        - in: path
+          name: sessionId
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Scan accepted
+  /attendance/sessions/{sessionId}/confirm:
+    post:
+      tags: [Attendance]
+      summary: Confirm a scan for a session
+      parameters:
+        - in: path
+          name: sessionId
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Attendance confirmed
+  /analytics/overview:
+    get:
+      tags: [Analytics]
+      summary: Attendance and fraud overview
+      responses:
+        '200':
+          description: Overview metrics
+  /analytics/live:
+    get:
+      tags: [Analytics]
+      summary: Live session summary
+      responses:
+        '200':
+          description: Realtime metrics
+  /analytics/momentum:
+    get:
+      tags: [Analytics]
+      summary: Attendance momentum by day
+      responses:
+        '200':
+          description: Momentum series
+  /analytics/heatmap:
+    get:
+      tags: [Analytics]
+      summary: Fraud reason heatmap
+      responses:
+        '200':
+          description: Fraud clusters
+  /analytics/comparison:
+    get:
+      tags: [Analytics]
+      summary: Department comparison table
+      responses:
+        '200':
+          description: Department ranking data
+  /admin/audit-logs:
+    get:
+      tags: [Admin]
+      summary: Retrieve immutable audit logs
+      responses:
+        '200':
+          description: Audit trail
+  /admin/health:
+    get:
+      tags: [Admin]
+      summary: Service health and inventory snapshot
+      responses:
+        '200':
+          description: Operational health
+  /notifications:
+    get:
+      tags: [Notifications]
+      summary: List notifications for the current user
+      responses:
+        '200':
+          description: Notification feed

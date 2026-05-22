@@ -1,0 +1,22 @@
+openapi: 3.0.3
+info:
+  title: Secure Attendance System API
+  version: 1.0.0
+servers:
+  - url: http://localhost:4000/api/v1
+paths:
+  /auth/login:
+    post:
+      summary: Login and issue JWT tokens
+  /attendance/sessions:
+    post:
+      summary: Start a rolling QR attendance session
+  /attendance/scan:
+    post:
+      summary: Scan attendance QR and create a pending record
+  /attendance/confirm:
+    post:
+      summary: Confirm attendance with reverse QR or BLE
+  /analytics/overview:
+    get:
+      summary: Get analytics overview
