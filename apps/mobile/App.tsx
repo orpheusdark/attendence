@@ -6,7 +6,7 @@ import * as Haptics from 'expo-haptics';
 import { StatusBar } from 'expo-status-bar';
 import { Animated, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
 import QRCode from 'react-native-qrcode-svg';
-import { closeSocket, getSocket } from './src/lib/socket';
+import { closeSocket, getSocket, joinSessionRoom, leaveSessionRoom } from './src/lib/socket';
 import { getLiveSummary, getNotifications, getOverview, getSessions, setToken } from './src/lib/api';
 import { Badge, PrimaryButton, SectionTitle, StatCard, Surface } from './src/components/ui';
 
@@ -62,13 +62,31 @@ function HomeScreen() {
   const [notifications, setNotifications] = useState<string[]>([]);
 
   useEffect(() => {
+    let joinedSessionId: string | null = null;
     getLiveSummary().then(setLive).catch(() => undefined);
     getNotifications().then(items => setNotifications(items.slice(0, 3).map(item => item.title))).catch(() => undefined);
+    getSessions()
+      .then(items => {
+        if (items.length > 0) {
+          joinedSessionId = items[0]._id;
+          joinSessionRoom(joinedSessionId);
+        }
+      })
+      .catch(() => undefined);
+
     const socket = getSocket();
     socket.on('attendance:session.started', () => setLive(state => ({ ...state, activeSessions: state.activeSessions + 1 })));
     socket.on('attendance:scan.created', () => setLive(state => ({ ...state, confirmed: state.confirmed + 1 })));
     socket.on('attendance:confirmed', () => setLive(state => ({ ...state, confirmed: state.confirmed + 1 })));
-    return () => closeSocket();
+    return () => {
+      if (joinedSessionId) {
+        leaveSessionRoom(joinedSessionId);
+      }
+      socket.off('attendance:session.started');
+      socket.off('attendance:scan.created');
+      socket.off('attendance:confirmed');
+      closeSocket();
+    };
   }, []);
 
   return (

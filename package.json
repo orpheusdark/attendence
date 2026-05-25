@@ -11,6 +11,7 @@
     "dev:api": "npm run dev -w @attendance/api",
     "dev:web": "npm run dev -w @attendance/web",
     "dev:mobile": "npm run start -w @attendance/mobile",
+    "e2e": "node scripts/e2e.js",
     "build": "npm run build -ws",
     "test": "npm run test -ws",
     "lint": "npm run lint -ws"

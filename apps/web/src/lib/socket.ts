@@ -13,6 +13,15 @@ export function connectSocket() {
   return socket;
 }
 
+export function joinSessionRoom(sessionId: string) {
+  const client = connectSocket();
+  client.emit('session:join', { sessionId });
+}
+
+export function leaveSessionRoom(sessionId: string) {
+  socket?.emit('session:leave', { sessionId });
+}
+
 export function disconnectSocket() {
   socket?.disconnect();
   socket = null;

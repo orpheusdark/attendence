@@ -1,8 +1,9 @@
-import { useState, type ChangeEvent, type FormEvent } from 'react';
+import { useEffect, useState, type ChangeEvent, type FormEvent } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { ClipboardList, Download, Lock, RefreshCw, WifiOff } from 'lucide-react';
 import { login, getAnalyticsOverview, getAuditLogs, getDepartmentComparison, getHealth, getLiveSummary, getNotifications, getSessions, getAttendanceMomentum, getFraudHeatmap } from './lib/api';
+import { connectSocket, disconnectSocket, joinSessionRoom, leaveSessionRoom } from './lib/socket';
 import { useSessionStore } from './store/session';
 import { Card, LiveDot, MetricCard, PageTransition, SectionHeader, StatusPill } from './components/ui';
 import type { AnalyticsOverview, AttendanceSessionDto, DepartmentComparisonRow, LiveSummary, LoginResponse, NotificationDto } from '@attendance/shared';
@@ -210,6 +211,26 @@ function AnalyticsBlock() {
 function TeacherPage() {
   const sessions = useQuery<AttendanceSessionDto[]>({ queryKey: ['sessions'], queryFn: getSessions });
   const live = useQuery<LiveSummary>({ queryKey: ['live-summary'], queryFn: getLiveSummary });
+
+  useEffect(() => {
+    const list = sessions.data ?? [];
+    if (list.length === 0) {
+      return;
+    }
+
+    connectSocket();
+    for (const session of list) {
+      joinSessionRoom(session._id);
+    }
+
+    return () => {
+      for (const session of list) {
+        leaveSessionRoom(session._id);
+      }
+      disconnectSocket();
+    };
+  }, [sessions.data]);
+
   return (
     <PageTransition>
       <div className="space-y-6">
