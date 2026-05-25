@@ -2,7 +2,7 @@ import { useEffect, useState, type ChangeEvent, type FormEvent } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { ClipboardList, Download, Lock, RefreshCw, WifiOff } from 'lucide-react';
-import { login, getAnalyticsOverview, getAuditLogs, getDepartmentComparison, getHealth, getLiveSummary, getNotifications, getSessions, getAttendanceMomentum, getFraudHeatmap } from './lib/api';
+import { login, getAnalyticsOverview, getAuditLogs, getDepartmentComparison, getHealth, getLiveSummary, getNotifications, getSessions, getAttendanceMomentum, getFraudHeatmap, startSession, scanAttendance, confirmAttendance } from './lib/api';
 import { connectSocket, disconnectSocket, joinSessionRoom, leaveSessionRoom } from './lib/socket';
 import { useSessionStore } from './store/session';
 import { Card, LiveDot, MetricCard, PageTransition, SectionHeader, StatusPill } from './components/ui';
@@ -321,54 +321,176 @@ function HodPage() {
 
 function AdminPage() {
   const health = useQuery<HealthSummary>({ queryKey: ['health'], queryFn: getHealth });
-  const notifications = useQuery<NotificationDto[]>({ queryKey: ['notifications'], queryFn: getNotifications });
-  const auditLogs = useQuery<AuditLogRow[]>({ queryKey: ['audit-logs'], queryFn: getAuditLogs });
+  const sessions = useQuery<AttendanceSessionDto[]>({ queryKey: ['sessions'], queryFn: getSessions });
+  const [subjectId, setSubjectId] = useState('6a139efb0eecf3a380990c66');
+  const [classroom, setClassroom] = useState('TEST-R101');
+  const [sessionId, setSessionId] = useState('');
+  const [qrToken, setQrToken] = useState('');
+  const [studentId, setStudentId] = useState('');
+  const [eventLog, setEventLog] = useState<string[]>([]);
+  const [resultLog, setResultLog] = useState<string[]>([]);
+
+  useEffect(() => {
+    const socket = connectSocket();
+    const onStarted = (payload: { sessionId: string; qrToken: string }) => {
+      setSessionId(payload.sessionId);
+      setQrToken(payload.qrToken);
+      joinSessionRoom(payload.sessionId);
+      setEventLog(prev => [`session.started ${payload.sessionId.slice(-6)}`, ...prev].slice(0, 8));
+    };
+    const onScan = (payload: { studentId: string; status: string }) => {
+      setEventLog(prev => [`scan.created ${payload.studentId.slice(-6)} ${payload.status}`, ...prev].slice(0, 8));
+    };
+    const onConfirm = (payload: { studentId: string; status: string }) => {
+      setEventLog(prev => [`confirmed ${payload.studentId.slice(-6)} ${payload.status}`, ...prev].slice(0, 8));
+    };
+
+    socket.on('attendance:session.started', onStarted);
+    socket.on('attendance:scan.created', onScan);
+    socket.on('attendance:confirmed', onConfirm);
+
+    return () => {
+      if (sessionId) {
+        leaveSessionRoom(sessionId);
+      }
+      socket.off('attendance:session.started', onStarted);
+      socket.off('attendance:scan.created', onScan);
+      socket.off('attendance:confirmed', onConfirm);
+      disconnectSocket();
+    };
+  }, [sessionId]);
+
+  const startNewSession = async () => {
+    try {
+      const response = await startSession({ subjectId, classroomName: classroom });
+      setSessionId(response.session._id);
+      setQrToken(response.qr.token);
+      setResultLog(prev => [`started session ${response.session._id}`, ...prev].slice(0, 8));
+      sessions.refetch();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'start session failed';
+      setResultLog(prev => [`error: ${message}`, ...prev].slice(0, 8));
+    }
+  };
+
+  const runScan = async () => {
+    if (!sessionId || !qrToken) {
+      setResultLog(prev => ['error: create or select a session first', ...prev].slice(0, 8));
+      return;
+    }
+
+    const id = studentId || Math.random().toString(16).slice(2, 26).padEnd(24, '0').slice(0, 24);
+    setStudentId(id);
+
+    try {
+      await scanAttendance({
+        sessionId,
+        studentId: id,
+        deviceId: 'web-test-device-001',
+        deviceFingerprintHash: 'web-test-fp',
+        ipAddress: '127.0.0.1',
+        latitude: 0,
+        longitude: 0,
+        qrToken
+      });
+      setResultLog(prev => [`scan ok for ${id}`, ...prev].slice(0, 8));
+      sessions.refetch();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'scan failed';
+      setResultLog(prev => [`error: ${message}`, ...prev].slice(0, 8));
+    }
+  };
+
+  const runConfirm = async () => {
+    if (!sessionId || !studentId) {
+      setResultLog(prev => ['error: run scan first', ...prev].slice(0, 8));
+      return;
+    }
+
+    try {
+      await confirmAttendance({ sessionId, studentId, reverseToken: `reverse-${Date.now()}`, confirmationMethod: 'manual' });
+      setResultLog(prev => [`confirm ok for ${studentId}`, ...prev].slice(0, 8));
+      sessions.refetch();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'confirm failed';
+      setResultLog(prev => [`error: ${message}`, ...prev].slice(0, 8));
+    }
+  };
+
   return (
     <PageTransition>
       <div className="space-y-6">
-        <OverviewHero />
-        <div className="grid gap-6 xl:grid-cols-3">
-          <Card className="p-6 xl:col-span-2">
-            <SectionHeader eyebrow="system monitoring" title="platform health" />
-            <div className="mt-5 grid gap-4 sm:grid-cols-3">
-              <MetricCard label="active sessions" value={String(health.data?.status === 'ok' ? 1 : 0)} delta="service" />
-              <MetricCard label="devices" value={String(health.data?.devices ?? 0)} delta="tracked" />
-              <MetricCard label="audit logs" value={String(health.data?.audits ?? 0)} delta="immutable" />
+        <Card className="p-5 sm:p-6">
+          <SectionHeader eyebrow="test center" title="quick end-to-end testing" />
+          <div className="mt-4 grid gap-3 sm:grid-cols-3">
+            <MetricCard label="api" value={health.data?.status ?? 'checking'} delta="/health" tone={health.data?.status === 'ok' ? 'success' : 'danger'} />
+            <MetricCard label="sessions" value={String(sessions.data?.length ?? 0)} delta="loaded" />
+            <MetricCard label="active id" value={sessionId ? sessionId.slice(-6) : 'none'} delta="current" />
+          </div>
+          <div className="mt-4 text-sm text-slate-300">Use the 3 buttons in order: start session, run scan, confirm attendance. You should see socket events immediately in the live feed.</div>
+        </Card>
+
+        <div className="grid gap-6 lg:grid-cols-2">
+          <Card className="p-5 sm:p-6">
+            <SectionHeader eyebrow="step 1" title="start a session" />
+            <div className="mt-4 space-y-3">
+              <label className="block">
+                <div className="mb-1 text-xs uppercase tracking-[0.2em] text-slate-500">subject id</div>
+                <input value={subjectId} onChange={(event: ChangeEvent<HTMLInputElement>) => setSubjectId(event.target.value)} className="w-full rounded-xl border border-white/10 bg-[#0b0f17] px-3 py-2 text-sm text-white" />
+              </label>
+              <label className="block">
+                <div className="mb-1 text-xs uppercase tracking-[0.2em] text-slate-500">classroom</div>
+                <input value={classroom} onChange={(event: ChangeEvent<HTMLInputElement>) => setClassroom(event.target.value)} className="w-full rounded-xl border border-white/10 bg-[#0b0f17] px-3 py-2 text-sm text-white" />
+              </label>
+              <button onClick={startNewSession} className="w-full rounded-xl bg-cyan-400 px-4 py-2.5 text-sm font-semibold text-slate-950">Start Session</button>
             </div>
           </Card>
-          <Card className="p-6">
-            <SectionHeader eyebrow="system messages" title="notification stream" />
+
+          <Card className="p-5 sm:p-6">
+            <SectionHeader eyebrow="steps 2 & 3" title="scan and confirm" />
             <div className="mt-4 space-y-3">
-              {(notifications.data ?? []).slice(0, 4).map(notification => (
-                <div key={notification._id} className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
-                  <div className="text-sm font-medium text-white">{notification.title}</div>
-                  <div className="mt-1 text-xs text-slate-400">{notification.body}</div>
-                </div>
+              <label className="block">
+                <div className="mb-1 text-xs uppercase tracking-[0.2em] text-slate-500">session id</div>
+                <select value={sessionId} onChange={(event: ChangeEvent<HTMLSelectElement>) => setSessionId(event.target.value)} className="w-full rounded-xl border border-white/10 bg-[#0b0f17] px-3 py-2 text-sm text-white">
+                  <option value="">Select session</option>
+                  {(sessions.data ?? []).map(item => (
+                    <option key={item._id} value={item._id}>{item.classroomName} · {item._id.slice(-6)}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="block">
+                <div className="mb-1 text-xs uppercase tracking-[0.2em] text-slate-500">qr token (auto from start)</div>
+                <input value={qrToken} onChange={(event: ChangeEvent<HTMLInputElement>) => setQrToken(event.target.value)} className="w-full rounded-xl border border-white/10 bg-[#0b0f17] px-3 py-2 text-sm text-white" />
+              </label>
+              <div className="grid gap-2 sm:grid-cols-2">
+                <button onClick={runScan} className="rounded-xl bg-white/10 px-4 py-2.5 text-sm font-semibold text-white">Run Scan</button>
+                <button onClick={runConfirm} className="rounded-xl bg-emerald-500/20 px-4 py-2.5 text-sm font-semibold text-emerald-100">Confirm</button>
+              </div>
+            </div>
+          </Card>
+        </div>
+
+        <div className="grid gap-6 lg:grid-cols-2">
+          <Card className="p-5 sm:p-6">
+            <SectionHeader eyebrow="realtime" title="socket event feed" />
+            <div className="mt-4 space-y-2">
+              {eventLog.length === 0 ? <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-400">No events yet.</div> : null}
+              {eventLog.map((line, index) => (
+                <div key={`${line}-${index}`} className="rounded-xl border border-cyan-400/20 bg-cyan-400/10 px-3 py-2 text-sm text-cyan-100">{line}</div>
+              ))}
+            </div>
+          </Card>
+
+          <Card className="p-5 sm:p-6">
+            <SectionHeader eyebrow="requests" title="action results" />
+            <div className="mt-4 space-y-2">
+              {resultLog.length === 0 ? <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-400">No actions run yet.</div> : null}
+              {resultLog.map((line, index) => (
+                <div key={`${line}-${index}`} className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-200">{line}</div>
               ))}
             </div>
           </Card>
         </div>
-        <Card className="p-6">
-          <SectionHeader eyebrow="audit trail" title="immutable action log" />
-          <div className="mt-5 overflow-hidden rounded-3xl border border-white/10">
-            <div className="grid grid-cols-4 bg-white/5 px-4 py-3 text-xs uppercase tracking-[0.22em] text-slate-400">
-              <div>action</div>
-              <div>entity</div>
-              <div>severity</div>
-              <div className="text-right">time</div>
-            </div>
-            <div className="divide-y divide-white/10">
-              {(auditLogs.data ?? []).slice(0, 8).map(log => (
-                <div key={log._id} className="grid grid-cols-4 px-4 py-3 text-sm text-slate-300 transition hover:bg-white/5">
-                  <div className="text-white">{log.action}</div>
-                  <div>{log.entityType}</div>
-                  <div><StatusPill status={log.severity === 'critical' ? 'flagged' : log.severity === 'high' ? 'pending' : 'confirmed'} /></div>
-                  <div className="text-right text-slate-500">{new Date(log.createdAt).toLocaleString()}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </Card>
       </div>
     </PageTransition>
   );

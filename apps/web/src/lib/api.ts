@@ -98,3 +98,27 @@ export async function getCurrentAttendance() {
   const { data } = await api.get<{ items: AttendanceRecordDto[] }>('/attendance/sessions');
   return data.items;
 }
+
+export async function startSession(payload: { subjectId: string; classroomName: string; departmentId?: string; semester?: string; batch?: string }) {
+  const { data } = await api.post<{ session: AttendanceSessionDto; qr: { token: string; tokenHash: string; payload: Record<string, unknown> } }>('/attendance/sessions', payload);
+  return data;
+}
+
+export async function scanAttendance(payload: {
+  sessionId: string;
+  studentId: string;
+  deviceId: string;
+  deviceFingerprintHash: string;
+  ipAddress: string;
+  latitude: number;
+  longitude: number;
+  qrToken: string;
+}) {
+  const { data } = await api.post<AttendanceRecordDto>('/attendance/scan', payload);
+  return data;
+}
+
+export async function confirmAttendance(payload: { sessionId: string; studentId: string; reverseToken: string; confirmationMethod: 'reverse-qr' | 'ble' | 'manual' }) {
+  const { data } = await api.post<AttendanceRecordDto>('/attendance/confirm', payload);
+  return data;
+}

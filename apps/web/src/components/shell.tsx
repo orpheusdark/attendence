@@ -5,7 +5,7 @@ import { Card, LiveDot } from './ui';
 import { useSessionStore } from '../store/session';
 
 const navItems = [
-  { to: '/', label: 'Admin', icon: Grid2x2 },
+  { to: '/', label: 'Test Lab', icon: Grid2x2 },
   { to: '/teacher', label: 'Teacher', icon: ScanLine },
   { to: '/hod', label: 'HOD', icon: Users },
   { to: '/sessions', label: 'Sessions', icon: Shield },
@@ -57,8 +57,8 @@ export function Shell({ children }: { children: ReactNode }) {
           <header className="sticky top-0 z-20 border-b border-white/10 bg-[#0b0f17]/70 px-4 py-4 backdrop-blur-xl sm:px-6 lg:px-8">
             <div className="flex items-center justify-between gap-4">
               <div>
-                <div className="text-[11px] uppercase tracking-[0.32em] text-slate-500">good morning, professor</div>
-                <h1 className="mt-1 text-2xl font-semibold text-white md:text-3xl">live attendance operations</h1>
+                <div className="text-[11px] uppercase tracking-[0.32em] text-slate-500">quick testing mode</div>
+                <h1 className="mt-1 text-2xl font-semibold text-white md:text-3xl">attendance system test workspace</h1>
               </div>
               <div className="flex items-center gap-3">
                 <div className="hidden items-center gap-2 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 py-1.5 text-xs text-emerald-200 sm:flex">
@@ -69,6 +69,9 @@ export function Shell({ children }: { children: ReactNode }) {
                   {user?.name?.slice(0, 1) ?? 'A'}
                 </div>
               </div>
+            </div>
+            <div className="mt-3 rounded-2xl border border-cyan-400/20 bg-cyan-400/10 px-3 py-2 text-xs text-cyan-100">
+              Login: admin@attendance.local / ChangeMe123! • API: localhost:4000 • Use the Test Lab page for 1-click start, scan, confirm.
             </div>
           </header>
 
