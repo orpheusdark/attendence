@@ -18,13 +18,27 @@ export const startSession = asyncHandler(async (request: Request, response: Resp
 
 export const scanAttendance = asyncHandler(async (request: Request, response: Response) => {
   const data = scanAttendanceSchema.parse(request.body);
-  const record = await attendanceService.scanAttendance(data);
+  const record = await attendanceService.scanAttendance({
+    sessionId: data.sessionId,
+    studentId: data.studentId,
+    deviceId: data.deviceId,
+    deviceFingerprintHash: data.deviceFingerprintHash,
+    ipAddress: data.ipAddress,
+    latitude: data.latitude,
+    longitude: data.longitude,
+    qrToken: data.qrToken
+  });
   response.status(201).json(record);
 });
 
 export const confirmAttendance = asyncHandler(async (request: Request, response: Response) => {
   const data = confirmAttendanceSchema.parse(request.body);
-  const record = await attendanceService.confirmAttendance(data);
+  const record = await attendanceService.confirmAttendance({
+    sessionId: data.sessionId,
+    studentId: data.studentId,
+    reverseToken: data.reverseToken,
+    confirmationMethod: data.confirmationMethod
+  });
   response.json(record);
 });
 

@@ -6,7 +6,12 @@ import { auditService } from '../services/audit.service.js';
 
 export const register = asyncHandler(async (request: Request, response: Response) => {
   const data = registerSchema.parse(request.body);
-  const user = await authService.register(data);
+  const user = await authService.register({
+    name: data.name,
+    email: data.email,
+    password: data.password,
+    role: data.role
+  });
   await auditService.log({ action: 'auth.register', entityType: 'User', entityId: String(user._id), metadata: { role: user.role } });
   response.status(201).json({ user });
 });
@@ -14,10 +19,13 @@ export const register = asyncHandler(async (request: Request, response: Response
 export const login = asyncHandler(async (request: Request, response: Response) => {
   const data = loginSchema.parse(request.body);
   const result = await authService.login({
-    ipAddress: request.ip || request.socket.remoteAddress || '127.0.0.1',
-    ...data,
+    email: data.email,
+    password: data.password,
     deviceId: data.deviceId,
-    ...(request.header('user-agent') ? { userAgent: request.header('user-agent') } : {})
+    ipAddress: request.ip || request.socket.remoteAddress || '127.0.0.1',
+    ...(request.header('user-agent') ? { userAgent: request.header('user-agent') } : {}),
+    ...(data.osVersion ? { osVersion: data.osVersion } : {}),
+    ...(data.appVersion ? { appVersion: data.appVersion } : {})
   });
 
   await auditService.log({ action: 'auth.login', entityType: 'User', entityId: String(result.user._id), metadata: { deviceId: data.deviceId } });
