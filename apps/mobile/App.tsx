@@ -7,10 +7,10 @@ import { StatusBar } from 'expo-status-bar';
 import { Animated, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
 import QRCode from 'react-native-qrcode-svg';
 import { closeSocket, getSocket, joinSessionRoom, leaveSessionRoom } from './src/lib/socket';
-import { getLiveSummary, getNotifications, getOverview, getSessions, setToken } from './src/lib/api';
+import { getLiveSummary, getNotifications, getOverview, getSessions, setToken, login, startSession, scanAttendance, confirmAttendance } from './src/lib/api';
 import { Badge, PrimaryButton, SectionTitle, StatCard, Surface } from './src/components/ui';
 
-type TabKey = 'Home' | 'Scan' | 'League' | 'History' | 'Profile';
+type TabKey = 'Home' | 'Scan' | 'League' | 'History' | 'Profile' | 'TestLab';
 
 const Stack = createNativeStackNavigator();
 
@@ -19,7 +19,8 @@ const tabs: Array<{ key: TabKey; label: string }> = [
   { key: 'Scan', label: 'Scan' },
   { key: 'League', label: 'League' },
   { key: 'History', label: 'History' },
-  { key: 'Profile', label: 'Profile' }
+  { key: 'Profile', label: 'Profile' },
+  { key: 'TestLab', label: 'Test Lab' }
 ];
 
 function TabBar({ active, onChange }: { active: TabKey; onChange: (tab: TabKey) => void }) {
@@ -56,6 +57,130 @@ function LoginScreen({ onComplete }: { onComplete: () => void }) {
     </SafeAreaView>
   );
 }
+
+  function TestLabScreen() {
+    const [sessionId, setSessionId] = useState('');
+    const [qrToken, setQrToken] = useState('');
+    const [studentId, setStudentId] = useState('');
+    const [eventLog, setEventLog] = useState<string[]>([]);
+    const [resultLog, setResultLog] = useState<string[]>([]);
+
+    useEffect(() => {
+      const socket = getSocket();
+      const onStarted = (payload: { sessionId: string; qrToken: string }) => {
+        setSessionId(payload.sessionId);
+        setQrToken(payload.qrToken);
+        joinSessionRoom(payload.sessionId);
+        setEventLog(prev => [`started ${payload.sessionId.slice(-6)}`, ...prev].slice(0, 10));
+      };
+      const onScan = (payload: { studentId: string; status: string }) => {
+        setEventLog(prev => [`scan ${payload.studentId.slice(-6)} ${payload.status}`, ...prev].slice(0, 10));
+      };
+      const onConfirm = (payload: { studentId: string; status: string }) => {
+        setEventLog(prev => [`confirmed ${payload.studentId.slice(-6)} ${payload.status}`, ...prev].slice(0, 10));
+      };
+
+      socket.on('attendance:session.started', onStarted);
+      socket.on('attendance:scan.created', onScan);
+      socket.on('attendance:confirmed', onConfirm);
+
+      return () => {
+        if (sessionId) {
+          leaveSessionRoom(sessionId);
+        }
+        socket.off('attendance:session.started', onStarted);
+        socket.off('attendance:scan.created', onScan);
+        socket.off('attendance:confirmed', onConfirm);
+      };
+    }, [sessionId]);
+
+    const doLogin = async () => {
+      try {
+        const data = await login({ email: 'admin@attendance.local', password: 'ChangeMe123!', deviceId: 'mobile-test-device' });
+        setToken(data.accessToken);
+        setResultLog(prev => [`login ok ${data.user.email}`, ...prev].slice(0, 10));
+      } catch (err) {
+        setResultLog(prev => [`login error`, ...prev].slice(0, 10));
+      }
+    };
+
+    const doStart = async () => {
+      try {
+        const res = await startSession({ classroomName: 'MOBILE-TEST-R101' });
+        setSessionId(res.session._id);
+        setQrToken(res.qr.token);
+        setResultLog(prev => [`started ${res.session._id.slice(-6)}`, ...prev].slice(0, 10));
+        joinSessionRoom(res.session._id);
+      } catch (err) {
+        setResultLog(prev => [`start error`, ...prev].slice(0, 10));
+      }
+    };
+
+    const doScan = async () => {
+      if (!sessionId || !qrToken) {
+        setResultLog(prev => ['error: create or select a session first', ...prev].slice(0, 10));
+        return;
+      }
+      const id = studentId || Math.random().toString(16).slice(2, 26).padEnd(24, '0').slice(0, 24);
+      setStudentId(id);
+      try {
+        await scanAttendance({ sessionId, studentId: id, deviceId: 'mobile-test-device-001', deviceFingerprintHash: 'mobile-test-fp', ipAddress: '127.0.0.1', latitude: 0, longitude: 0, qrToken });
+        setResultLog(prev => [`scan ok ${id.slice(-6)}`, ...prev].slice(0, 10));
+      } catch (err) {
+        setResultLog(prev => [`scan error`, ...prev].slice(0, 10));
+      }
+    };
+
+    const doConfirm = async () => {
+      if (!sessionId || !studentId) {
+        setResultLog(prev => ['error: run scan first', ...prev].slice(0, 10));
+        return;
+      }
+      try {
+        await confirmAttendance({ sessionId, studentId, reverseToken: `reverse-${Date.now()}`, confirmationMethod: 'manual' });
+        setResultLog(prev => [`confirm ok ${studentId.slice(-6)}`, ...prev].slice(0, 10));
+      } catch (err) {
+        setResultLog(prev => [`confirm error`, ...prev].slice(0, 10));
+      }
+    };
+
+    return (
+      <SafeAreaView className="flex-1 bg-slate-950 px-5 py-6">
+        <ScrollView contentContainerStyle={{ paddingBottom: 120 }}>
+          <SectionTitle eyebrow="test lab" title="mobile quick e2e" />
+          <Surface className="mt-4 p-4">
+            <Text className="text-slate-300">Use buttons in order: login, start session, run scan, confirm.</Text>
+            <View className="mt-4 space-y-3">
+              <PrimaryButton label="Login as seeded admin" onPress={doLogin} />
+              <PrimaryButton label="Start Session" onPress={doStart} />
+              <PrimaryButton label="Run Scan" onPress={doScan} />
+              <PrimaryButton label="Confirm" onPress={doConfirm} />
+            </View>
+          </Surface>
+
+          <Surface className="mt-4 p-4">
+            <Text className="text-slate-200">Socket events</Text>
+            <View className="mt-3">
+              {eventLog.length === 0 ? <Text className="text-slate-400">No events yet.</Text> : null}
+              {eventLog.map((line, idx) => (
+                <Text key={`${line}-${idx}`} className="text-slate-200">{line}</Text>
+              ))}
+            </View>
+          </Surface>
+
+          <Surface className="mt-4 p-4">
+            <Text className="text-slate-200">Action results</Text>
+            <View className="mt-3">
+              {resultLog.length === 0 ? <Text className="text-slate-400">No actions yet.</Text> : null}
+              {resultLog.map((line, idx) => (
+                <Text key={`${line}-${idx}`} className="text-slate-200">{line}</Text>
+              ))}
+            </View>
+          </Surface>
+        </ScrollView>
+      </SafeAreaView>
+    );
+  }
 
 function HomeScreen() {
   const [live, setLive] = useState({ activeSessions: 0, confirmed: 0, flagged: 0, openFraud: 0 });
@@ -299,7 +424,8 @@ export default function App() {
     Scan: <ScanScreen />,
     League: <LeagueScreen />,
     History: <HistoryScreen />,
-    Profile: <ProfileScreen />
+    Profile: <ProfileScreen />,
+    TestLab: <TestLabScreen />
   }[tab];
 
   return (
